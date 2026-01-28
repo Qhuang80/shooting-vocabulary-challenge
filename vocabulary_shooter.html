@@ -1,0 +1,1541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vocabulary Shooter 3D</title>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #00f2fe 100%);
+            background-size: 400% 400%;
+            animation: gradientShift 15s ease infinite;
+            color: #00ff00;
+            overflow: hidden;
+            height: 100vh;
+            perspective: 1000px;
+            cursor: crosshair;
+        }
+
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* 3D Background Grid */
+        .bg-grid {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(rgba(255, 255, 255, 0.15) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.15) 1px, transparent 1px);
+            background-size: 50px 50px;
+            transform: rotateX(60deg) translateZ(-500px);
+            animation: gridMove 20s linear infinite;
+            pointer-events: none;
+        }
+
+        @keyframes gridMove {
+            0% { transform: rotateX(60deg) translateZ(-500px) translateY(0); }
+            100% { transform: rotateX(60deg) translateZ(-500px) translateY(50px); }
+        }
+
+        /* 3D Particles */
+        .particle {
+            position: fixed;
+            width: 4px;
+            height: 4px;
+            background: linear-gradient(45deg, #fff, #00ffff, #ff00ff);
+            border-radius: 50%;
+            pointer-events: none;
+            animation: particleFloat linear infinite;
+            box-shadow: 0 0 15px currentColor, 0 0 30px currentColor;
+        }
+
+        @keyframes particleFloat {
+            0% {
+                transform: translateY(100vh) translateZ(0) scale(0.5);
+                opacity: 0;
+            }
+            10% {
+                opacity: 1;
+            }
+            90% {
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(-100px) translateZ(100px) scale(1.5);
+                opacity: 0;
+            }
+        }
+
+        #startScreen, #gameScreen, #endScreen {
+            display: none;
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+
+        #startScreen.active, #gameScreen.active, #endScreen.active {
+            display: flex;
+        }
+
+        .title {
+            font-size: 4em;
+            text-shadow: 0 0 30px rgba(255,255,255,0.8), 0 0 60px rgba(255,255,255,0.5), 0 0 90px rgba(255,255,255,0.3);
+            margin-bottom: 30px;
+            animation: pulse 2s infinite, colorShift 4s infinite, float 3s ease-in-out infinite;
+            background: linear-gradient(45deg, 
+                #ff6b9d, #ffa07a, #ffeb3b, #4facfe, 
+                #00f2fe, #43e97b, #fa709a, #fee140,
+                #30cfd0, #a8edea, #fed6e3, #c471f5,
+                #12c2e9, #f093fb, #4facfe, #00f2fe);
+            background-size: 400% 400%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-weight: bold;
+            filter: drop-shadow(0 0 20px rgba(255,255,255,0.5));
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.9; transform: scale(1.05); }
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+
+        @keyframes colorShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .input-group {
+            margin: 20px 0;
+        }
+
+        input, select, button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid #00ff00;
+            color: #00ff00;
+            padding: 15px 30px;
+            font-size: 1.2em;
+            font-family: 'Courier New', monospace;
+            cursor: pointer;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+        }
+
+        input {
+            cursor: text;
+            color: #fff;
+        }
+
+        button:hover {
+            background: rgba(0, 255, 0, 0.3);
+            box-shadow: 0 0 30px #00ff00, 0 0 60px rgba(0, 255, 0, 0.5);
+            transform: scale(1.05);
+        }
+
+        #gameScreen {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #00f2fe 100%);
+            background-size: 400% 400%;
+            animation: gradientShift 15s ease infinite;
+            perspective: 1500px;
+        }
+
+        .hud {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 40px;
+            font-size: 1.5em;
+        }
+
+        .hud > div {
+            background: linear-gradient(45deg, 
+                #ff6b9d, #ffa07a, #ffeb3b, #4facfe, 
+                #00f2fe, #43e97b, #fa709a, #fee140,
+                #30cfd0, #a8edea, #fed6e3, #c471f5);
+            background-size: 400% 400%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: colorShift 4s infinite;
+            font-weight: bold;
+            font-family: 'Impact', 'Arial Black', sans-serif;
+        }
+
+        .crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 40px;
+            height: 40px;
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        .crosshair::before, .crosshair::after {
+            content: '';
+            position: absolute;
+            background: #ff0000;
+            box-shadow: 0 0 10px #ff0000;
+        }
+
+        .crosshair::before {
+            width: 2px;
+            height: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .crosshair::after {
+            height: 2px;
+            width: 100%;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        /* Bullet effect */
+        .bullet {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: #ffff00;
+            border-radius: 50%;
+            box-shadow: 0 0 20px #ffff00, 0 0 40px #ffff00;
+            pointer-events: none;
+            z-index: 999;
+        }
+
+        /* 3D Gun Model Container */
+        #gunCanvas {
+            position: fixed;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 800px;
+            height: 600px;
+            pointer-events: none;
+            z-index: 500;
+        }
+
+        /* Impact effect */
+        .impact {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            pointer-events: none;
+            z-index: 997;
+        }
+
+        .impact::before, .impact::after {
+            content: '';
+            position: absolute;
+            background: #ff0000;
+            animation: impactAnim 0.3s forwards;
+        }
+
+        .impact::before {
+            width: 100%;
+            height: 2px;
+            top: 50%;
+            left: 0;
+        }
+
+        .impact::after {
+            width: 2px;
+            height: 100%;
+            left: 50%;
+            top: 0;
+        }
+
+        @keyframes impactAnim {
+            0% { opacity: 1; transform: scale(0.5); }
+            100% { opacity: 0; transform: scale(2); }
+        }
+
+        .target-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        .target {
+            position: absolute;
+            background: linear-gradient(135deg, rgba(255, 0, 100, 0.3), rgba(255, 100, 0, 0.3));
+            border: 3px solid #ff0066;
+            border-radius: 15px;
+            padding: 25px 30px;
+            cursor: crosshair;
+            transition: all 0.3s;
+            animation: float 3s ease-in-out infinite, glow 2s ease-in-out infinite;
+            min-width: 200px;
+            max-width: 400px;
+            transform-style: preserve-3d;
+            perspective: 1000px;
+            pointer-events: auto;
+            z-index: 10;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 0 30px rgba(255, 0, 100, 0.5), inset 0 0 20px rgba(255, 255, 255, 0.1);
+        }
+
+        .target:hover {
+            background: linear-gradient(135deg, rgba(255, 0, 100, 0.6), rgba(255, 100, 0, 0.6));
+            box-shadow: 0 0 50px #ff0066, 0 0 100px rgba(255, 0, 100, 0.5);
+            transform: scale(1.1) rotateY(5deg) translateZ(20px);
+        }
+
+        @keyframes glow {
+            0%, 100% { box-shadow: 0 0 30px rgba(255, 0, 100, 0.5), inset 0 0 20px rgba(255, 255, 255, 0.1); }
+            50% { box-shadow: 0 0 50px rgba(255, 0, 100, 0.8), inset 0 0 30px rgba(255, 255, 255, 0.2); }
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotateX(0deg); }
+            50% { transform: translateY(-20px) rotateX(5deg); }
+        }
+
+        .target.hit {
+            animation: hitShake 0.3s forwards;
+        }
+
+        @keyframes hitShake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-10px); }
+            75% { transform: translateX(10px); }
+        }
+
+        .target-word {
+            font-size: 1.5em;
+            font-weight: bold;
+            text-shadow: 0 0 10px #ff0000;
+            line-height: 1.4;
+        }
+
+        .target-meaning {
+            font-size: 1.2em;
+            color: #ffaa00;
+        }
+
+        .question {
+            position: absolute;
+            top: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 1.8em;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.95);
+            padding: 12px 25px;
+            border: 3px solid #00ff00;
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(0, 255, 0, 0.5);
+            max-width: 70%;
+            z-index: 100;
+            pointer-events: none;
+            font-weight: bold;
+        }
+
+        .hit-effect {
+            position: absolute;
+            pointer-events: none;
+            font-size: 3em;
+            font-weight: bold;
+            animation: hitAnim 1s forwards;
+        }
+
+        @keyframes hitAnim {
+            0% { opacity: 1; transform: scale(1); }
+            100% { opacity: 0; transform: scale(2); }
+        }
+
+        .stats {
+            text-align: center;
+            font-size: 2em;
+            margin: 20px 0;
+        }
+
+        .performance {
+            font-size: 3em;
+            margin: 30px 0;
+            text-shadow: 0 0 20px currentColor;
+        }
+
+        .performance.excellent { color: #00ff00; }
+        .performance.good { color: #ffff00; }
+        .performance.average { color: #ff9900; }
+        .performance.poor { color: #ff0000; }
+
+        .round-info {
+            position: absolute;
+            top: 100px;
+            left: 20%;
+            transform: translateX(-50%);
+            font-size: 1.3em;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 8px 16px;
+            border: 2px solid #00ff00;
+            border-radius: 5px;
+            z-index: 101;
+        }
+
+        .skip-round-btn {
+            position: absolute;
+            top: 60px;
+            left: 20%;
+            transform: translateX(-50%);
+            background: rgba(255, 165, 0, 0.2);
+            border: 2px solid #ffa500;
+            color: #ffa500;
+            padding: 8px 16px;
+            font-size: 1em;
+            font-family: 'Courier New', monospace;
+            cursor: pointer;
+            border-radius: 5px;
+            z-index: 101;
+            transition: all 0.3s;
+        }
+
+        .skip-round-btn:hover {
+            background: rgba(255, 165, 0, 0.4);
+            box-shadow: 0 0 20px #ffa500;
+        }
+
+        .restart-round-btn {
+            position: absolute;
+            top: 60px;
+            right: 20%;
+            transform: translateX(50%);
+            background: rgba(0, 191, 255, 0.2);
+            border: 2px solid #00bfff;
+            color: #00bfff;
+            padding: 8px 16px;
+            font-size: 1em;
+            font-family: 'Courier New', monospace;
+            cursor: pointer;
+            border-radius: 5px;
+            z-index: 101;
+            transition: all 0.3s;
+        }
+
+        .restart-round-btn:hover {
+            background: rgba(0, 191, 255, 0.4);
+            box-shadow: 0 0 20px #00bfff;
+        }
+
+        .instructions {
+            margin: 20px 0;
+            font-size: 1.2em;
+            text-align: center;
+            max-width: 600px;
+            background: linear-gradient(45deg, 
+                #ff6b9d, #ffa07a, #ffeb3b, #4facfe, 
+                #00f2fe, #43e97b, #fa709a, #fee140,
+                #30cfd0, #a8edea, #fed6e3, #c471f5);
+            background-size: 400% 400%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: colorShift 4s infinite;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div id="startScreen" class="active">
+        <div class="title"><span style="font-family: 'STKaiti', 'KaiTi', '楷体', serif; font-style: italic; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">黄老师</span> Vocabulary Challenge</div>
+        <div class="instructions">
+            MISSION BRIEFING:<br>
+            Shoot the correct target by clicking on it!<br>
+            Match words with their meanings or vice versa.<br>
+            Complete all rounds to finish your mission!
+        </div>
+        <div class="input-group">
+            <input type="text" id="playerName" placeholder="ENTER YOUR NAME" maxlength="20">
+        </div>
+        <div class="input-group">
+            <label for="roundSelect" style="margin-right: 10px;">SELECT ROUNDS:</label>
+            <select id="roundSelect">
+                <option value="4">4 ROUNDS</option>
+                <option value="5">5 ROUNDS</option>
+                <option value="6" selected>6 ROUNDS</option>
+                <option value="7">7 ROUNDS</option>
+                <option value="8">8 ROUNDS</option>
+            </select>
+        </div>
+        <button id="startMissionBtn" onclick="if(window.startGame){window.startGame();}">START MISSION</button>
+    </div>
+
+    <div id="gameScreen">
+        <div class="bg-grid"></div>
+        <div class="hud">
+            <div>PLAYER: <span id="playerDisplay"></span></div>
+            <div>SCORE: <span id="score">0</span></div>
+            <div>
+                HITS: <span id="hits">0</span>/<span id="totalQuestions">0</span><br>
+                <span style="font-size: 0.8em;">TIME: <span id="timer">00:00</span></span>
+            </div>
+        </div>
+        <div class="round-info">
+            ROUND <span id="currentRound">1</span>/<span id="totalRounds">6</span>
+        </div>
+        <button class="skip-round-btn" id="skipRoundBtn" onclick="if(window.skipToNextRound){window.skipToNextRound();}">NEXT ROUND ►</button>
+        <button class="restart-round-btn" id="restartRoundBtn" onclick="if(window.restartRound){window.restartRound();}">↻ RESTART ROUND</button>
+        <div class="question" id="question"></div>
+        <div class="crosshair"></div>
+        <div class="target-container" id="targetContainer"></div>
+        
+        <!-- 3D Gun Model Canvas -->
+        <canvas id="gunCanvas"></canvas>
+    </div>
+
+    <div id="endScreen">
+        <div class="title">MISSION COMPLETE</div>
+        <div class="stats">
+            <div>PLAYER: <span id="finalPlayer"></span></div>
+            <div>FINAL SCORE: <span id="finalScore"></span></div>
+            <div>ACCURACY: <span id="accuracy"></span>%</div>
+            <div>HITS: <span id="finalHits"></span>/<span id="finalTotal"></span></div>
+        </div>
+        <div class="performance" id="performance"></div>
+        <button onclick="location.reload()">PLAY AGAIN</button>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        const vocabulary = [
+            {word: "image", meaning: "picture, impression, representation"},
+            {word: "voyage", meaning: "journey by sea or in space"},
+            {word: "voyager", meaning: "traveler, passenger"},
+            {word: "attack on", meaning: "assault on, strike against"},
+            {word: "attacker", meaning: "assailant, aggressor"},
+            {word: "attack", meaning: "assault, strike, criticize"},
+            {word: "Pearl Harbor", meaning: "US naval base in Hawaii"},
+            {word: "historical event", meaning: "important occurrence in history"},
+            {word: "time travel", meaning: "movement between different points in time"},
+            {word: "timer", meaning: "device that measures time, stopwatch"},
+            {word: "excerpt", meaning: "extract, selection, passage"},
+            {word: "three dimensions", meaning: "having length, width, and height"},
+            {word: "breadth", meaning: "width, range, extent"},
+            {word: "thickness", meaning: "density, width of something solid"},
+            {word: "dimension", meaning: "measurement, size, scope, aspect"},
+            {word: "conduct", meaning: "carry out, organize, behavior"},
+            {word: "time machine", meaning: "device for traveling through time"},
+            {word: "historical figure", meaning: "important person from history"},
+            {word: "load", meaning: "cargo, burden, weight to carry"},
+            {word: "be loaded with", meaning: "be filled with, be full of"},
+            {word: "be packed with", meaning: "be crowded with, be full of"},
+            {word: "sailing", meaning: "traveling by boat, voyage by sea"},
+            {word: "navigate", meaning: "steer, find one's way, direct course"},
+            {word: "navigation", meaning: "process of directing a route"},
+            {word: "navigator", meaning: "person who directs a ship or aircraft"},
+            {word: "set sail", meaning: "begin a voyage, depart by ship"},
+            {word: "on the voyage", meaning: "during the journey by sea"},
+            {word: "fleet", meaning: "group of ships, navy vessels"},
+            {word: "on board", meaning: "aboard, on a ship or vehicle"},
+            {word: "aboard", meaning: "on or into a ship, aircraft, or vehicle"},
+            {word: "demonstrate", meaning: "prove, show, display, exhibit"},
+            {word: "construct", meaning: "build, create, assemble"},
+            {word: "construction", meaning: "building, structure, act of building"},
+            {word: "on behalf of", meaning: "representing, in the name of"},
+            {word: "a total of", meaning: "altogether, in sum, combined amount"},
+            {word: "china", meaning: "porcelain, fine ceramic ware"},
+            {word: "treasures", meaning: "valuable objects, precious items"},
+            {word: "compass", meaning: "navigation instrument showing direction"},
+            {word: "logs", meaning: "records, written accounts, journals"},
+            {word: "chart", meaning: "map, graph, diagram"},
+            {word: "far-reaching", meaning: "extensive, having wide influence"},
+            {word: "set foot", meaning: "enter, step into a place"},
+            {word: "legend", meaning: "myth, traditional story, famous person"},
+            {word: "pass on", meaning: "transmit, hand down, communicate"},
+            {word: "harmonious", meaning: "peaceful, in agreement, balanced"},
+            {word: "expose to", meaning: "subject to, make vulnerable to"},
+            {word: "overseas", meaning: "abroad, in foreign countries"},
+            {word: "historian", meaning: "expert in history, scholar of past events"},
+            {word: "dismiss", meaning: "reject, send away, disregard"},
+            {word: "dismissal", meaning: "rejection, removal from position"},
+            {word: "proof", meaning: "evidence, verification, demonstration"},
+            {word: "enormous", meaning: "huge, very large, immense"},
+            {word: "shipyard", meaning: "place where ships are built or repaired"},
+            {word: "accomplishment", meaning: "achievement, success, completion"},
+            {word: "acknowledge", meaning: "admit, recognize, accept as true"},
+            {word: "acknowledgement", meaning: "recognition, acceptance, admission"},
+            {word: "influential", meaning: "powerful, having great effect or impact"},
+            {word: "along the way", meaning: "during the journey or process"},
+            {word: "as is the case with", meaning: "similar to, like, just as with"},
+            {word: "port", meaning: "harbor, place where ships dock"},
+            {word: "geography", meaning: "study of Earth's features and places"},
+            {word: "geographical", meaning: "relating to physical features of Earth"},
+            {word: "seaman", meaning: "sailor, person who works on ships"},
+            {word: "insist on", meaning: "demand, require firmly, persist in"},
+            {word: "route", meaning: "path, way, course of travel"},
+            {word: "sail across", meaning: "travel by ship over water"},
+            {word: "the Atlantic Ocean", meaning: "ocean between Americas and Europe/Africa"},
+            {word: "the Pacific Ocean", meaning: "largest ocean on Earth"},
+            {word: "attempts", meaning: "tries, efforts to achieve something"},
+            {word: "make an attempt to do", meaning: "try to do, endeavor to accomplish"},
+            {word: "attempt to do", meaning: "try to do, make an effort"},
+            {word: "financial support", meaning: "monetary assistance, funding"},
+            {word: "finance", meaning: "provide money for, fund"},
+            {word: "depart", meaning: "leave, go away, set out"},
+            {word: "departure", meaning: "act of leaving, going away"},
+            {word: "depart for", meaning: "leave to go to a place"},
+            {word: "depart from", meaning: "leave a place, deviate from"},
+            {word: "crewman", meaning: "member of a ship's crew"},
+            {word: "a shortage of", meaning: "lack of, insufficient amount"},
+            {word: "leak", meaning: "escape of liquid or gas, disclose secretly"},
+            {word: "grave", meaning: "serious, severe, critical"},
+            {word: "grave danger", meaning: "serious threat, severe risk"},
+            {word: "in panic", meaning: "in a state of fear and confusion"},
+            {word: "regardless of", meaning: "despite, without being affected by"},
+            {word: "out of danger", meaning: "safe, no longer at risk"},
+            {word: "bravery", meaning: "courage, fearlessness, valor"},
+            {word: "spot", meaning: "notice, see, detect, location"},
+            {word: "spotted", meaning: "noticed, seen, detected"},
+            {word: "in the distance", meaning: "far away, at a remote point"},
+            {word: "natives", meaning: "local inhabitants, indigenous people"},
+            {word: "be convinced that", meaning: "be certain, firmly believe"},
+            {word: "shores", meaning: "coastlines, edges of land near water"},
+            {word: "coasts", meaning: "seashores, land along the sea"},
+            {word: "subsequent", meaning: "following, coming after, later"},
+            {word: "subsequently", meaning: "afterwards, later, then"},
+            {word: "previously", meaning: "before, earlier, formerly"},
+            {word: "exploration", meaning: "investigation, discovery, examination"},
+            {word: "bear witness to", meaning: "testify to, provide evidence of"},
+            {word: "allow for", meaning: "consider, take into account, permit"},
+            {word: "exchange", meaning: "trade, swap, interchange"},
+            {word: "take charge of", meaning: "assume responsibility for, manage"},
+            {word: "in charge of", meaning: "responsible for, managing"},
+            {word: "in the charge of", meaning: "under the care or control of"},
+            {word: "Brunei", meaning: "small country in Southeast Asia"},
+            {word: "bury", meaning: "hide, conceal, place underground"},
+            {word: "fascinating", meaning: "captivating, extremely interesting"},
+            {word: "fascination", meaning: "strong attraction, intense interest"},
+            {word: "be fascinated by", meaning: "be captivated by, be very interested in"},
+            {word: "be accompanied by", meaning: "be joined by, occur together with"},
+            {word: "accompany", meaning: "go with, escort, occur with"},
+            {word: "technologically advanced", meaning: "having sophisticated technology"},
+            {word: "royal", meaning: "relating to a king or queen"},
+            {word: "on one's deathbed", meaning: "dying, near death"},
+            {word: "in line with", meaning: "consistent with, in agreement with"},
+            {word: "unconvincing", meaning: "not persuasive, not believable"},
+            {word: "convince", meaning: "persuade, make someone believe"},
+            {word: "convinced", meaning: "certain, firmly believing"},
+            {word: "classics", meaning: "great works of literature or art"},
+            {word: "literary", meaning: "relating to literature or writing"},
+            {word: "literature", meaning: "written works, books and writings"},
+            {word: "extensively", meaning: "widely, thoroughly, in great detail"},
+            {word: "extensive", meaning: "wide, large in scope or range"},
+            {word: "a wide range of", meaning: "many different types of"},
+            {word: "masterpiece", meaning: "outstanding work of art or skill"},
+            {word: "succeed", meaning: "achieve a goal, accomplish, follow after"},
+            {word: "succession", meaning: "sequence, series, inheritance of position"},
+            {word: "facilitate", meaning: "help, make easier, assist"},
+            {word: "painstaking efforts", meaning: "careful and thorough work"},
+            {word: "historical document", meaning: "written record from the past"},
+            {word: "totalling", meaning: "amounting to, adding up to"},
+            {word: "consist of", meaning: "be made up of, be composed of"},
+            {word: "vivid", meaning: "lively, bright, producing clear mental images"},
+            {word: "vividly", meaning: "in a lively or bright manner"},
+            {word: "minister", meaning: "government official, religious leader"},
+            {word: "exceptional", meaning: "outstanding, unusually good, rare"},
+            {word: "remarkable", meaning: "extraordinary, worthy of attention"},
+            {word: "astronomy", meaning: "study of stars and celestial objects"},
+            {word: "astronomer", meaning: "scientist who studies space"},
+            {word: "biography", meaning: "life story, written account of someone's life"},
+            {word: "format", meaning: "layout, arrangement, structure"},
+            {word: "thoughtful", meaning: "considerate, showing careful thought"},
+            {word: "paraphrase", meaning: "reword, express in different words"},
+            {word: "academic", meaning: "relating to education or scholarship"},
+            {word: "read up", meaning: "study, research by reading"},
+            {word: "general reader", meaning: "ordinary person who reads, non-specialist"},
+            {word: "shelves", meaning: "flat surfaces for storing items"},
+            {word: "accessible", meaning: "available, easy to reach or understand"},
+            {word: "a touch of", meaning: "a small amount of, a hint of"},
+            {word: "knowledge base", meaning: "collection of information and facts"},
+            {word: "chatty", meaning: "talkative, conversational in style"},
+            {word: "adopt", meaning: "take up, accept and use, take as one's own"},
+            {word: "adoption", meaning: "act of taking up or accepting"},
+            {word: "comparison", meaning: "act of comparing, examination of similarities"},
+            {word: "engage", meaning: "involve, participate, occupy attention"},
+            {word: "engagement", meaning: "involvement, appointment, commitment"},
+            {word: "engaged", meaning: "busy, occupied, involved in"},
+            {word: "be engaged in", meaning: "be involved in, be occupied with"},
+            {word: "the approach to", meaning: "method of dealing with, way to"},
+            {word: "doorway", meaning: "entrance, opening for a door"},
+            {word: "current situation", meaning: "present circumstances, existing state"},
+            {word: "writing techniques", meaning: "methods used in writing"},
+            {word: "opening paragraph", meaning: "first paragraph, introductory section"},
+            {word: "a rhetorical question", meaning: "question asked for effect, not answer"},
+            {word: "grab", meaning: "seize, take hold of quickly"},
+            {word: "make corrections", meaning: "fix errors, revise mistakes"},
+            {word: "warship", meaning: "military vessel, naval combat ship"},
+            {word: "stretch", meaning: "extend, reach out, make longer"},
+            {word: "rub", meaning: "massage, move hand over surface"},
+            {word: "make one's bed", meaning: "arrange bedding neatly"},
+            {word: "crashing", meaning: "loud, colliding with force"},
+            {word: "dive", meaning: "plunge into water, descend quickly"},
+            {word: "dive down", meaning: "descend underwater, go down quickly"},
+            {word: "deafen", meaning: "make unable to hear, cause deafness"},
+            {word: "deafening", meaning: "very loud, extremely noisy"},
+            {word: "come to oneself", meaning: "regain consciousness, recover awareness"},
+            {word: "deck", meaning: "floor of a ship, platform"},
+            {word: "burns", meaning: "injuries from fire or heat"},
+            {word: "meanwhile", meaning: "at the same time, during this period"},
+            {word: "abandon", meaning: "give up, leave behind, desert"},
+            {word: "drag", meaning: "pull along with effort, haul"},
+            {word: "lifeboat", meaning: "small rescue boat on a ship"},
+            {word: "severely", meaning: "seriously, extremely, harshly"},
+            {word: "chaos", meaning: "disorder, confusion, complete disarray"},
+            {word: "navy", meaning: "military sea force, fleet of warships"},
+            {word: "despite", meaning: "in spite of, regardless of"},
+            {word: "bleed", meaning: "lose blood, flow out"},
+            {word: "hatch a plot", meaning: "devise a scheme, plan secretly"},
+            {word: "hatch", meaning: "emerge from egg, devise a plan"},
+            {word: "plot", meaning: "scheme, secret plan, storyline"},
+            {word: "surprise attack", meaning: "unexpected assault, sudden strike"},
+            {word: "launch an attack", meaning: "begin an assault, start offensive"},
+            {word: "declare war", meaning: "officially announce state of war"},
+            {word: "in total", meaning: "altogether, in sum, combined"},
+            {word: "deliver a speech", meaning: "give a formal talk, make an address"},
+            {word: "congress", meaning: "legislative body, formal meeting"},
+            {word: "infamy", meaning: "disgrace, evil reputation, notoriety"},
+            {word: "in response to", meaning: "as a reaction to, answering"},
+            {word: "memorial", meaning: "monument, tribute to remember someone"},
+            {word: "show respect for", meaning: "honor, demonstrate regard for"},
+            {word: "episode", meaning: "event, incident, part of a series"},
+            {word: "sink", meaning: "go down below surface, descend"},
+            {word: "sunken", meaning: "submerged, lying at bottom of water"},
+            {word: "remains", meaning: "ruins, what is left, relics"},
+            {word: "chronological", meaning: "arranged in time order, sequential"},
+            {word: "revolution", meaning: "major change, overthrow of system"},
+            {word: "industrial revolution", meaning: "period of major industrialization"},
+            {word: "Belgium", meaning: "country in Western Europe"},
+            {word: "fundamental", meaning: "basic, essential, forming foundation"},
+            {word: "reform", meaning: "improve, make changes to correct"},
+            {word: "revolutionary", meaning: "involving major change, radical"},
+            {word: "revolutionist", meaning: "person who supports revolution"},
+            {word: "textile", meaning: "fabric, woven material, cloth"},
+            {word: "output", meaning: "production, amount produced"},
+            {word: "considerably", meaning: "significantly, to a great extent"},
+            {word: "considerable", meaning: "significant, substantial in amount"},
+            {word: "specialized", meaning: "focused on specific area, expert"},
+            {word: "steam power", meaning: "energy from heated water vapor"},
+            {word: "steam engine", meaning: "machine powered by steam"},
+            {word: "shift", meaning: "change, move, transfer position"},
+            {word: "cottage industry", meaning: "small-scale home-based production"},
+            {word: "expand", meaning: "grow, increase in size, extend"},
+            {word: "rural", meaning: "countryside, relating to farmland"},
+            {word: "urban", meaning: "relating to cities, metropolitan"},
+            {word: "working class", meaning: "laborers, manual workers, proletariat"},
+            {word: "make a comparison", meaning: "compare, examine similarities"},
+            {word: "official website", meaning: "authorized internet site"}
+        ];
+
+        let gameState = {
+            playerName: '',
+            totalRounds: 6,
+            currentRound: 1,
+            score: 0,
+            hits: 0,
+            totalQuestions: 0,
+            allWords: [],
+            roundWords: [],
+            wordsPerRound: 0,
+            canShoot: true,
+            currentTargets: [],
+            startTime: 0,
+            timerInterval: null
+        };
+
+        // Sound effects using Web Audio API
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+        // Three.js setup for 3D gun model
+        let gunScene, gunCamera, gunRenderer, gunModel, gunMixer;
+        let mouseX = 0, mouseY = 0;
+
+        function initGunModel() {
+            const canvas = document.getElementById('gunCanvas');
+            const width = 800;
+            const height = 600;
+
+            console.log('Initializing gun model...');
+
+            // Scene
+            gunScene = new THREE.Scene();
+
+            // Camera - adjusted for better view
+            gunCamera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
+            gunCamera.position.set(0, 0, 4);
+
+            // Renderer
+            gunRenderer = new THREE.WebGLRenderer({ 
+                canvas: canvas, 
+                alpha: true,
+                antialias: true 
+            });
+            gunRenderer.setSize(width, height);
+            gunRenderer.setClearColor(0x000000, 0);
+            gunRenderer.outputColorSpace = THREE.SRGBColorSpace;
+            gunRenderer.toneMapping = THREE.NoToneMapping;
+            gunRenderer.toneMappingExposure = 1.0;
+
+            // Lights - Maximum brightness with pure white light
+            const ambientLight = new THREE.AmbientLight(0xffffff, 8);
+            gunScene.add(ambientLight);
+
+            const directionalLight1 = new THREE.DirectionalLight(0xffffff, 8);
+            directionalLight1.position.set(5, 5, 5);
+            gunScene.add(directionalLight1);
+
+            const directionalLight2 = new THREE.DirectionalLight(0xffffff, 6);
+            directionalLight2.position.set(-5, 3, 5);
+            gunScene.add(directionalLight2);
+
+            const directionalLight3 = new THREE.DirectionalLight(0xffffff, 5);
+            directionalLight3.position.set(0, -5, 5);
+            gunScene.add(directionalLight3);
+
+            const directionalLight4 = new THREE.DirectionalLight(0xffffff, 5);
+            directionalLight4.position.set(0, 5, -5);
+            gunScene.add(directionalLight4);
+
+            const pointLight1 = new THREE.PointLight(0xffffff, 8);
+            pointLight1.position.set(0, 0, 5);
+            gunScene.add(pointLight1);
+
+            const pointLight2 = new THREE.PointLight(0xffffff, 6);
+            pointLight2.position.set(2, 2, 3);
+            gunScene.add(pointLight2);
+
+            const pointLight3 = new THREE.PointLight(0xffffff, 6);
+            pointLight3.position.set(-2, 2, 3);
+            gunScene.add(pointLight3);
+
+            // Add a test cube to verify rendering
+            const testGeometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+            const testMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+            const testCube = new THREE.Mesh(testGeometry, testMaterial);
+            testCube.position.set(0, 0, 0);
+            gunScene.add(testCube);
+
+            // Load GLB model
+            const loader = new GLTFLoader();
+            console.log('Loading 3D.glb...');
+            
+            loader.load(
+                '3D.glb',
+                function(gltf) {
+                    console.log('Gun model loaded successfully!', gltf);
+                    gunModel = gltf.scene;
+                    
+                    // Remove test cube
+                    gunScene.remove(testCube);
+                    
+                    // Preserve original materials and colors - don't modify
+                    gunModel.traverse((child) => {
+                        if (child.isMesh) {
+                            // Keep 100% original material
+                            if (child.material) {
+                                child.material.needsUpdate = true;
+                            }
+                            // Enable shadows
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                        }
+                    });
+                    
+                    // Calculate bounding box to understand model size
+                    const box = new THREE.Box3().setFromObject(gunModel);
+                    const size = box.getSize(new THREE.Vector3());
+                    console.log('Model size:', size);
+                    
+                    // Adjust model scale - 2x larger than before
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    const scale = (2 / maxDim) * 2; // Double the size
+                    gunModel.scale.set(scale, scale, scale);
+                    
+                    // Center the model with better positioning
+                    const center = box.getCenter(new THREE.Vector3());
+                    gunModel.position.set(-center.x * scale + 0.5, -center.y * scale - 0.3, -center.z * scale);
+                    
+                    // Rotate 180 degrees so gun barrel faces forward
+                    // Store original rotation for reference
+                    gunModel.userData.baseRotation = Math.PI;
+                    gunModel.rotation.set(0, Math.PI, 0);
+                    
+                    console.log('Gun initialized with 180° rotation');
+                    console.log('✓ 3D Model loaded successfully!');
+                    
+                    gunScene.add(gunModel);
+
+                    // Animation mixer if model has animations
+                    if (gltf.animations && gltf.animations.length) {
+                        gunMixer = new THREE.AnimationMixer(gunModel);
+                        console.log('Animations found:', gltf.animations.length);
+                    }
+                },
+                function(xhr) {
+                    console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+                },
+                function(error) {
+                    console.error('Error loading gun model:', error);
+                    alert('Failed to load 3D model. Please check if 3D.glb is in the same folder as the HTML file.');
+                }
+            );
+
+            // Animation loop
+            animateGun();
+        }
+
+        function animateGun() {
+            requestAnimationFrame(animateGun);
+
+            if (gunModel) {
+                // Left/Right: Subtract mouseX
+                const targetRotationY = Math.PI - mouseX * 1.5;
+                // Up/Down: Further increase range to allow gun to point all the way down
+                // mouseY of 0.6 should give us about 60-70 degrees
+                const targetRotationX = mouseY * 1.8;
+                
+                // Smooth interpolation
+                gunModel.rotation.y += (targetRotationY - gunModel.rotation.y) * 0.3;
+                gunModel.rotation.x += (targetRotationX - gunModel.rotation.x) * 0.3;
+                
+                // Debug logging
+                if (Math.random() < 0.02) {
+                    const directionX = mouseX > 0.5 ? 'RIGHT' : (mouseX < -0.5 ? 'LEFT' : 'CENTER');
+                    const directionY = mouseY > 0.5 ? 'DOWN' : (mouseY < -0.5 ? 'UP' : 'CENTER');
+                    console.log(`🎯 Mouse: ${directionX}/${directionY} (X:${mouseX.toFixed(2)}, Y:${mouseY.toFixed(2)}) | Gun Y: ${(gunModel.rotation.y / Math.PI * 180).toFixed(0)}° X: ${(gunModel.rotation.x / Math.PI * 180).toFixed(0)}°`);
+                }
+            }
+
+            if (gunMixer) {
+                gunMixer.update(0.01);
+            }
+
+            gunRenderer.render(gunScene, gunCamera);
+        }
+
+        function gunRecoil() {
+            if (!gunModel) {
+                console.log('Gun model not loaded yet');
+                return;
+            }
+
+            const originalZ = gunModel.position.z;
+            const originalRotX = gunModel.rotation.x;
+            const originalRotZ = gunModel.rotation.z;
+
+            // More dramatic recoil animation
+            gunModel.position.z = originalZ - 0.8;
+            gunModel.rotation.x = originalRotX - 0.4;
+            gunModel.rotation.z = originalRotZ + 0.1;
+
+            setTimeout(() => {
+                gunModel.position.z = originalZ;
+                gunModel.rotation.x = originalRotX;
+                gunModel.rotation.z = originalRotZ;
+            }, 150);
+
+            // Muzzle flash effect at gun barrel
+            createMuzzleFlashEffect();
+        }
+
+        function createMuzzleFlashEffect() {
+            if (!gunModel) return;
+
+            // Create a vector pointing forward from the barrel in local space
+            // The barrel is on the RIGHT side (thin end), pointing in positive X direction in local coordinates
+            const barrelLocalPosition = new THREE.Vector3(2.0, 0, 0);
+            
+            // Transform the local barrel position to world space using gun's rotation
+            const barrelWorldPosition = barrelLocalPosition.clone();
+            barrelWorldPosition.applyEuler(gunModel.rotation);
+            barrelWorldPosition.add(gunModel.position);
+            
+            const flashX = barrelWorldPosition.x;
+            const flashY = barrelWorldPosition.y;
+            const flashZ = barrelWorldPosition.z;
+
+            console.log(`🔥 Muzzle flash at X:${flashX.toFixed(2)} Y:${flashY.toFixed(2)} Z:${flashZ.toFixed(2)} | Gun Y:${(gunModel.rotation.y/Math.PI*180).toFixed(0)}° X:${(gunModel.rotation.x/Math.PI*180).toFixed(0)}°`);
+
+            // Create multiple flash particles for more realistic effect
+            for (let i = 0; i < 3; i++) {
+                const flashGeometry = new THREE.SphereGeometry(0.15 + i * 0.08, 16, 16);
+                const flashMaterial = new THREE.MeshBasicMaterial({ 
+                    color: i === 0 ? 0xffff00 : (i === 1 ? 0xffaa00 : 0xff6600),
+                    transparent: true,
+                    opacity: 0.9 - i * 0.2
+                });
+                const flash = new THREE.Mesh(flashGeometry, flashMaterial);
+                
+                // Position flash at calculated barrel tip
+                flash.position.set(flashX, flashY, flashZ);
+                
+                gunScene.add(flash);
+
+                setTimeout(() => gunScene.remove(flash), 100 + i * 30);
+            }
+
+            // Add light flash at gun barrel
+            const flashLight = new THREE.PointLight(0xffaa00, 8, 10);
+            flashLight.position.set(flashX, flashY, flashZ);
+            gunScene.add(flashLight);
+            
+            setTimeout(() => gunScene.remove(flashLight), 100);
+        }
+
+        function playSound(type) {
+            try {
+                // Resume audio context if suspended
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+                
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                if (type === 'hit') {
+                    // Success sound - ascending tone
+                    oscillator.frequency.setValueAtTime(400, audioContext.currentTime);
+                    oscillator.frequency.exponentialRampToValueAtTime(800, audioContext.currentTime + 0.1);
+                    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+                    oscillator.start(audioContext.currentTime);
+                    oscillator.stop(audioContext.currentTime + 0.2);
+                } else if (type === 'miss') {
+                    // Miss sound - descending tone
+                    console.log('🔊 Playing miss sound');
+                    oscillator.frequency.setValueAtTime(300, audioContext.currentTime);
+                    oscillator.frequency.exponentialRampToValueAtTime(100, audioContext.currentTime + 0.15);
+                    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.15);
+                    oscillator.start(audioContext.currentTime);
+                    oscillator.stop(audioContext.currentTime + 0.15);
+                } else if (type === 'start') {
+                // Start sound - quick beep
+                oscillator.frequency.setValueAtTime(600, audioContext.currentTime);
+                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.1);
+            } else if (type === 'complete') {
+                // Complete sound - victory fanfare
+                const notes = [523, 659, 784, 1047]; // C, E, G, C
+                notes.forEach((freq, i) => {
+                    const osc = audioContext.createOscillator();
+                    const gain = audioContext.createGain();
+                    osc.connect(gain);
+                    gain.connect(audioContext.destination);
+                    osc.frequency.setValueAtTime(freq, audioContext.currentTime + i * 0.15);
+                    gain.gain.setValueAtTime(0.2, audioContext.currentTime + i * 0.15);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + i * 0.15 + 0.3);
+                    osc.start(audioContext.currentTime + i * 0.15);
+                    osc.stop(audioContext.currentTime + i * 0.15 + 0.3);
+                });
+            }
+            } catch (error) {
+                console.error('Sound error:', error);
+            }
+        }
+
+        function startGame() {
+            console.log('🎮 startGame called');
+            
+            const nameInput = document.getElementById('playerName').value.trim();
+            if (!nameInput) {
+                alert('Please enter your name!');
+                console.log('❌ No name entered');
+                return;
+            }
+
+            console.log('✓ Name entered:', nameInput);
+            playSound('start');
+
+            gameState.playerName = nameInput;
+            gameState.totalRounds = parseInt(document.getElementById('roundSelect').value);
+            gameState.currentRound = 1;
+            gameState.score = 0;
+            gameState.hits = 0;
+            gameState.totalQuestions = 0;
+            gameState.startTime = Date.now();
+
+            // Calculate words per round based on total vocabulary divided by rounds
+            gameState.wordsPerRound = Math.floor(vocabulary.length / gameState.totalRounds);
+            
+            // Shuffle all vocabulary
+            gameState.allWords = [...vocabulary].sort(() => Math.random() - 0.5);
+
+            document.getElementById('startScreen').classList.remove('active');
+            document.getElementById('gameScreen').classList.add('active');
+            document.getElementById('playerDisplay').textContent = gameState.playerName;
+            document.getElementById('totalRounds').textContent = gameState.totalRounds;
+
+            // Start timer
+            startTimer();
+
+            // Create 3D particles
+            createParticles();
+
+            // Initialize 3D gun model
+            initGunModel();
+
+            // Add global mouse tracking - highest priority
+            window.addEventListener('mousemove', (e) => {
+                mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+                mouseY = (e.clientY / window.innerHeight) * 2 - 1;
+                
+                // Reduced logging - only log every 50th event
+                if (Math.random() < 0.02) {
+                    console.log('Mouse X:', mouseX.toFixed(2), 'Y:', mouseY.toFixed(2));
+                }
+            }, true); // Use capture phase to get event first
+
+            startRound();
+        }
+
+        function startTimer() {
+            gameState.timerInterval = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - gameState.startTime) / 1000);
+                const minutes = Math.floor(elapsed / 60);
+                const seconds = elapsed % 60;
+                document.getElementById('timer').textContent = 
+                    `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            }, 1000);
+        }
+
+        function stopTimer() {
+            if (gameState.timerInterval) {
+                clearInterval(gameState.timerInterval);
+                gameState.timerInterval = null;
+            }
+        }
+
+        function createParticles() {
+            const gameScreen = document.getElementById('gameScreen');
+            for (let i = 0; i < 30; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                particle.style.left = Math.random() * 100 + '%';
+                particle.style.animationDuration = (Math.random() * 3 + 2) + 's';
+                particle.style.animationDelay = Math.random() * 2 + 's';
+                gameScreen.appendChild(particle);
+            }
+        }
+
+        function skipToNextRound() {
+            // Clear current round
+            gameState.roundWords = [];
+            
+            // Move to next round
+            if (gameState.currentRound < gameState.totalRounds) {
+                gameState.currentRound++;
+                playSound('start');
+                showRoundTransition();
+            } else {
+                // If already at last round, end game
+                endGame();
+            }
+        }
+
+        function restartRound() {
+            // Clear current targets
+            const container = document.getElementById('targetContainer');
+            if (container) {
+                container.innerHTML = '';
+            }
+            
+            // Reset score and hits
+            gameState.score = 0;
+            gameState.hits = 0;
+            gameState.totalQuestions = 0;
+            document.getElementById('score').textContent = '0';
+            document.getElementById('hits').textContent = '0';
+            document.getElementById('totalQuestions').textContent = '0';
+            
+            // Reset round timer
+            gameState.startTime = Date.now();
+            document.getElementById('timer').textContent = '00:00';
+            
+            // Reload words for current round
+            const startIndex = (gameState.currentRound - 1) * gameState.wordsPerRound;
+            const endIndex = startIndex + gameState.wordsPerRound;
+            gameState.roundWords = gameState.allWords.slice(startIndex, endIndex)
+                .sort(() => Math.random() - 0.5);
+            
+            // Reset shooting state
+            gameState.canShoot = true;
+            
+            // Play sound and start
+            playSound('start');
+            console.log('🔄 Restarting round', gameState.currentRound, '- Score, Hits, and Timer reset to 0');
+            
+            // Start first question
+            nextQuestion();
+        }
+
+        function startRound() {
+            document.getElementById('currentRound').textContent = gameState.currentRound;
+            
+            // Reset timer for new round
+            gameState.startTime = Date.now();
+            document.getElementById('timer').textContent = '00:00';
+            
+            // Get words for this round from the shuffled array
+            const startIndex = (gameState.currentRound - 1) * gameState.wordsPerRound;
+            const endIndex = startIndex + gameState.wordsPerRound;
+            // Shuffle again within the round for extra randomness
+            gameState.roundWords = gameState.allWords.slice(startIndex, endIndex)
+                .sort(() => Math.random() - 0.5);
+
+            nextQuestion();
+        }
+
+        function nextQuestion() {
+            if (gameState.roundWords.length === 0) {
+                // Round complete
+                if (gameState.currentRound < gameState.totalRounds) {
+                    gameState.currentRound++;
+                    setTimeout(() => {
+                        showRoundTransition();
+                    }, 1000);
+                } else {
+                    endGame();
+                }
+                return;
+            }
+
+            gameState.totalQuestions++;
+            document.getElementById('totalQuestions').textContent = gameState.totalQuestions;
+
+            // Always show word in question, display meanings as targets
+            const correctAnswer = gameState.roundWords.shift();
+            const wrongAnswers = [];
+            
+            // Get 3 random wrong answers (exclude the correct answer)
+            const otherWords = vocabulary.filter(v => v.word !== correctAnswer.word);
+            for (let i = 0; i < 3; i++) {
+                const randomIndex = Math.floor(Math.random() * otherWords.length);
+                wrongAnswers.push(otherWords.splice(randomIndex, 1)[0]);
+            }
+
+            // Shuffle all answers
+            const allAnswers = [correctAnswer, ...wrongAnswers].sort(() => Math.random() - 0.5);
+
+            // Show word in question, display meanings (English definitions) as targets
+            document.getElementById('question').textContent = correctAnswer.word;
+            displayTargets(allAnswers, 'meaning', correctAnswer.meaning);
+        }
+
+        function displayTargets(answers, displayType, correctValue) {
+            const container = document.getElementById('targetContainer');
+            container.innerHTML = '';
+            gameState.currentTargets = [];
+
+            const positions = [
+                { top: '25%', left: '5%' },
+                { top: '25%', right: '5%' },
+                { bottom: '10%', left: '5%' },
+                { bottom: '10%', right: '5%' }
+            ];
+
+            answers.forEach((answer, index) => {
+                const target = document.createElement('div');
+                target.className = 'target';
+                Object.assign(target.style, positions[index]);
+                
+                const value = displayType === 'word' ? answer.word : answer.meaning;
+                const isCorrect = value === correctValue;
+                
+                target.innerHTML = `<div class="target-word">${value}</div>`;
+                target.dataset.correct = isCorrect;
+                
+                // Add 3D rotation effect on mouse move
+                target.addEventListener('mousemove', (e) => {
+                    const rect = target.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    const centerX = rect.width / 2;
+                    const centerY = rect.height / 2;
+                    const rotateX = (y - centerY) / 10;
+                    const rotateY = (centerX - x) / 10;
+                    target.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale(1.05)`;
+                });
+                
+                target.addEventListener('mouseleave', () => {
+                    target.style.transform = '';
+                });
+                
+                gameState.currentTargets.push(target);
+                container.appendChild(target);
+            });
+
+            // Add click event to game screen for shooting
+            const gameScreen = document.getElementById('gameScreen');
+            gameScreen.onclick = handleShoot;
+            
+            // Gun follows mouse movement - track entire screen
+            gameScreen.onmousemove = (e) => {
+                // Normalized mouse position: -1 (left) to +1 (right), -1 (top) to +1 (bottom)
+                mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+                mouseY = (e.clientY / window.innerHeight) * 2 - 1;
+                
+                // Debug log to verify mouse tracking
+                console.log('Mouse X:', mouseX.toFixed(2), 'Mouse Y:', mouseY.toFixed(2));
+            };
+        }
+
+        function handleShoot(e) {
+            if (!gameState.canShoot) return;
+            
+            gameState.canShoot = false;
+            
+            // Get click position
+            const clickX = e.clientX;
+            const clickY = e.clientY;
+            
+            // Create muzzle flash at center
+            createMuzzleFlash();
+            
+            // Create bullet
+            createBullet(clickX, clickY);
+            
+            // Play shoot sound
+            playShootSound();
+            
+            // Check if hit any target
+            setTimeout(() => {
+                checkHit(clickX, clickY);
+            }, 200);
+        }
+
+        function createMuzzleFlash() {
+            // Trigger gun recoil animation
+            gunRecoil();
+        }
+
+        function createBullet(targetX, targetY) {
+            const bullet = document.createElement('div');
+            bullet.className = 'bullet';
+            
+            const startX = window.innerWidth / 2;
+            const startY = window.innerHeight / 2;
+            
+            bullet.style.left = startX + 'px';
+            bullet.style.top = startY + 'px';
+            
+            document.body.appendChild(bullet);
+            
+            // Animate bullet to target
+            const deltaX = targetX - startX;
+            const deltaY = targetY - startY;
+            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            const duration = distance / 2; // Speed control
+            
+            bullet.animate([
+                { left: startX + 'px', top: startY + 'px', opacity: 1 },
+                { left: targetX + 'px', top: targetY + 'px', opacity: 0.8 }
+            ], {
+                duration: duration,
+                easing: 'linear'
+            });
+            
+            setTimeout(() => {
+                bullet.remove();
+                createImpact(targetX, targetY);
+            }, duration);
+        }
+
+        function createImpact(x, y) {
+            const impact = document.createElement('div');
+            impact.className = 'impact';
+            impact.style.left = x + 'px';
+            impact.style.top = y + 'px';
+            impact.style.transform = 'translate(-50%, -50%)';
+            document.body.appendChild(impact);
+            
+            setTimeout(() => impact.remove(), 300);
+        }
+
+        function playShootSound() {
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.setValueAtTime(150, audioContext.currentTime);
+            oscillator.frequency.exponentialRampToValueAtTime(50, audioContext.currentTime + 0.05);
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.05);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.05);
+        }
+
+        function checkHit(x, y) {
+            let hitTarget = null;
+            
+            // Check each target
+            for (const target of gameState.currentTargets) {
+                const rect = target.getBoundingClientRect();
+                if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+                    hitTarget = target;
+                    break;
+                }
+            }
+            
+            if (hitTarget) {
+                const isCorrect = hitTarget.dataset.correct === 'true';
+                shootTarget(hitTarget, isCorrect);
+            } else {
+                // Missed all targets - play miss sound and show feedback
+                console.log('❌ Missed all targets at', x, y);
+                playSound('miss');
+                showHitEffect(x, y, 'MISS!', '#ff6600');
+                setTimeout(() => {
+                    gameState.canShoot = true;
+                }, 500);
+            }
+        }
+
+        function shootTarget(target, isCorrect) {
+            const rect = target.getBoundingClientRect();
+            const x = rect.left + rect.width / 2;
+            const y = rect.top + rect.height / 2;
+
+            target.classList.add('hit');
+
+            if (isCorrect) {
+                playSound('hit');
+                gameState.score += 100;
+                gameState.hits++;
+                showHitEffect(x, y, 'HIT!', '#00ff00');
+                target.style.background = 'rgba(0, 255, 0, 0.5)';
+                target.style.borderColor = '#00ff00';
+            } else {
+                playSound('miss');
+                gameState.score = Math.max(0, gameState.score - 25);
+                showHitEffect(x, y, 'MISS!', '#ff0000');
+                target.style.background = 'rgba(255, 0, 0, 0.5)';
+            }
+
+            document.getElementById('score').textContent = gameState.score;
+            document.getElementById('hits').textContent = gameState.hits;
+
+            // Disable shooting temporarily
+            const gameScreen = document.getElementById('gameScreen');
+            gameScreen.onclick = null;
+
+            setTimeout(() => {
+                gameState.canShoot = true;
+                nextQuestion();
+            }, 1500);
+        }
+
+        function showHitEffect(x, y, text, color) {
+            const effect = document.createElement('div');
+            effect.className = 'hit-effect';
+            effect.textContent = text;
+            effect.style.left = x + 'px';
+            effect.style.top = y + 'px';
+            effect.style.color = color;
+            document.body.appendChild(effect);
+
+            setTimeout(() => effect.remove(), 1000);
+        }
+
+        function showRoundTransition() {
+            playSound('start');
+            const question = document.getElementById('question');
+            question.textContent = `ROUND ${gameState.currentRound} STARTING...`;
+            question.style.fontSize = '3em';
+            
+            setTimeout(() => {
+                question.style.fontSize = '2.5em';
+                startRound();
+            }, 2000);
+        }
+
+        function endGame() {
+            playSound('complete');
+            
+            // Stop timer
+            stopTimer();
+            
+            document.getElementById('gameScreen').classList.remove('active');
+            document.getElementById('endScreen').classList.add('active');
+
+            const accuracy = Math.round((gameState.hits / gameState.totalQuestions) * 100);
+            const totalTime = Math.floor((Date.now() - gameState.startTime) / 1000);
+            const minutes = Math.floor(totalTime / 60);
+            const seconds = totalTime % 60;
+            
+            document.getElementById('finalPlayer').textContent = gameState.playerName;
+            document.getElementById('finalScore').textContent = gameState.score;
+            document.getElementById('accuracy').textContent = accuracy;
+            document.getElementById('finalHits').textContent = gameState.hits;
+            document.getElementById('finalTotal').textContent = gameState.totalQuestions;
+
+            const performanceEl = document.getElementById('performance');
+            if (accuracy >= 90) {
+                performanceEl.textContent = 'EXCELLENT!';
+                performanceEl.className = 'performance excellent';
+            } else if (accuracy >= 75) {
+                performanceEl.textContent = 'GOOD JOB!';
+                performanceEl.className = 'performance good';
+            } else if (accuracy >= 60) {
+                performanceEl.textContent = 'AVERAGE';
+                performanceEl.className = 'performance average';
+            } else {
+                performanceEl.textContent = 'NEED MORE PRACTICE';
+                performanceEl.className = 'performance poor';
+            }
+        }
+
+        // Make functions globally accessible IMMEDIATELY
+        window.startGame = startGame;
+        window.skipToNextRound = skipToNextRound;
+        window.restartRound = restartRound;
+        
+        console.log('✓ Game functions ready:', typeof window.startGame, typeof window.skipToNextRound, typeof window.restartRound);
+    </script>
+</body>
+</html>
